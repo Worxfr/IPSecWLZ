@@ -66,10 +66,6 @@ data "aws_ami" "amazon_linux_2" {
   }
 }
 
-data "aws_eip" "existing_eip" {
-  id = var.existing_eip_allocation_id
-}
-
 # Create a security group for the EC2 instance
 resource "aws_security_group" "ipsec_bgp_sg" {
   name        = "ipsec-bgp-sg"
