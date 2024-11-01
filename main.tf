@@ -1,56 +1,64 @@
-# Configure the AWS provider
+# Configure the AWS provider - sets up AWS as the cloud provider with specified region
 provider "aws" {
   region = var.aws_region
 }
 
-# Variables
+# Variables section - defines all input variables for the Terraform configuration
+
+# AWS region variable - specifies which AWS region to deploy resources to
 variable "aws_region" {
   description = "The AWS region to deploy to"
   type        = string
   default     = "eu-west-1"
 }
 
+# Wavelength subnet ID variable - references existing Wavelength Zone subnet
 variable "wavelength_subnet_id" {
   description = "The ID of the existing Wavelength Zone subnet"
   type        = string
 }
 
 
+# Wavelength Availability Zone variable - specifies AZ for Wavelength subnet
 variable "availabilityzone_wavelength" {
   description = "The Availability Zone for the Wavelength Zone subnet"
   type        = string
 }
 
+# Key pair name variable - for EC2 instance SSH access
 variable "key_pair_name" {
   description = "The name of the EC2 key pair to use"
   type        = string
   default     = "EC2-key-pair"
 }
 
+# BGP ASN variable - for BGP routing configuration
 variable "bgp_asn" {
   description = "BGP Autonomous System Number"
   type        = number
   default     = 65000
 }
 
+# Peer IP variable - for IPSec tunnel configuration
 variable "peer_ip" {
   description = "Peer IP"
   type        = string
   default     = "1.1.1.1"
 }
 
+# Peer ASN variable - for BGP routing with peer
 variable "peer_asn" {
   description = "Peer  BGP Autonomous System Number"
   type        = number
   default     = 65000
 }
 
-# Data source for the existing Wavelength Zone subnet
+# Data source to get Wavelength subnet details
 data "aws_subnet" "wavelength_subnet" {
   id = var.wavelength_subnet_id
 }
 
-# Data source to get the latest Amazon Linux 2 AMI
+# Data source to get latest Ubuntu 22.04 AMI
 data "aws_ami" "amazon_linux_2" {
   most_recent = true
   owners      = ["amazon"]
@@ -66,13 +74,13 @@ data "aws_ami" "amazon_linux_2" {
   }
 }
 
-# Create a security group for the EC2 instance
+# Security group for EC2 instance - controls inbound/outbound traffic
 resource "aws_security_group" "ipsec_bgp_sg" {
   name        = "ipsec-bgp-sg"
   description = "Security group for IPSec tunnel and BGP EC2 instance"
   vpc_id      = data.aws_subnet.wavelength_subnet.vpc_id
 
-  # Allow inbound IPSec traffic (UDP 500 and 4500)
+  # Allow inbound IPSec traffic on UDP 500
   ingress {
     from_port   = 500
     to_port     = 500
@@ -90,7 +98,7 @@ resource "aws_security_group" "ipsec_bgp_sg" {
   }
 }
 
-# Create IAM role for Session Manager
+# IAM role for AWS Systems Manager Session Manager access
 resource "aws_iam_role" "session_manager_role" {
   name = "SessionManagerRole"
 
@@ -108,20 +116,19 @@ resource "aws_iam_role" "session_manager_role" {
   })
 }
 
-# Attach the AmazonSSMManagedInstanceCore policy to the role
+# Attach SSM policy to IAM role
 resource "aws_iam_role_policy_attachment" "session_manager_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   role       = aws_iam_role.session_manager_role.name
 }
 
-# Create an instance profile
+# Create instance profile for EC2 to assume IAM role
 resource "aws_iam_instance_profile" "session_manager_profile" {
   name = "SessionManagerProfile"
   role = aws_iam_role.session_manager_role.name
 }
 
-
-# Create an EC2 instance for the IPSec tunnel and BGP
+# EC2 instance for IPSec tunnel and BGP routing
 resource "aws_instance" "ipsec_bgp_instance" {
   ami           = data.aws_ami.amazon_linux_2.id
   instance_type = "t3.medium"  # Adjust instance type as needed
@@ -136,6 +143,7 @@ resource "aws_instance" "ipsec_bgp_instance" {
     Name = "IPSec-BGP-Instance"
   }
 
+  # User data script to configure IPSec and BGP
   user_data = <<-EOF
               #!/bin/bash
 
@@ -229,7 +237,7 @@ resource "aws_instance" "ipsec_bgp_instance" {
   depends_on = [  ]
 }
 
-#Creation of Elastic IP for Wavelength EC2
+# Create Elastic IP for Wavelength EC2 instance
 resource "aws_eip" "wavelength_ip" {
   network_border_group = var.availabilityzone_wavelength
   instance             = aws_instance.ipsec_bgp_instance.id
@@ -238,6 +246,7 @@ resource "aws_eip" "wavelength_ip" {
   }
 }
 
+# Associate Elastic IP with EC2 instance
 resource "aws_eip_association" "eip_assoc" {
   instance_id   = aws_instance.ipsec_bgp_instance.id
   allocation_id = aws_eip.wavelength_ip.allocation_id
