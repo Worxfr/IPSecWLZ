@@ -94,11 +94,6 @@ resource "aws_route_table_association" "wavelength_rt_assoc" {
   route_table_id = aws_route_table.wavelength_rt.id
 }
 
-# Data source to get Wavelength subnet details
-data "aws_subnet" "wavelength_subnet" {
-  id = var.wavelength_subnet_id
-}
-
 # Data source to get latest Ubuntu 22.04 AMI
 data "aws_ami" "amazon_linux_2" {
   most_recent = true
