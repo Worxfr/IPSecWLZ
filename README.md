@@ -1,8 +1,9 @@
 # AWS Wavelength IPSec BGP Infrastructure
 
-### Temporary README
+> [!CAUTION]
+> Temporary README
 
-## [!CAUTION] Important Disclaimer
+## ⚠️ Important Disclaimer
 
 **This project is for testing and demonstration purposes only.**
 
