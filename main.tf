@@ -3,25 +3,15 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Variables section - defines all input variables for the Terraform configuration
-
-# AWS region variable - specifies which AWS region to deploy resources to
 variable "aws_region" {
-  description = "The AWS region to deploy to"
+  description = "AWS region for resource deployment"
   type        = string
-  default     = "eu-west-1"
+  default     = "us-east-1"
 }
 
-# Wavelength subnet ID variable - references existing Wavelength Zone subnet
-variable "wavelength_subnet_id" {
-  description = "The ID of the existing Wavelength Zone subnet"
-  type        = string
-}
-
-
-# Wavelength Availability Zone variable - specifies AZ for Wavelength subnet
+# Variable for Wavelength Zone
 variable "availabilityzone_wavelength" {
-  description = "The Availability Zone for the Wavelength Zone subnet"
+  description = "Availability Zone ID for Wavelength Zone"
   type        = string
 }
 
@@ -51,6 +41,57 @@ variable "peer_asn" {
   description = "Peer  BGP Autonomous System Number"
   type        = number
   default     = 65000
+}
+
+# VPC for Wavelength Zone deployment
+resource "aws_vpc" "wavelength_vpc" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "wavelength-vpc"
+  }
+}
+
+# Carrier Gateway for Wavelength Zone
+resource "aws_ec2_carrier_gateway" "wavelength_cgw" {
+  vpc_id = aws_vpc.wavelength_vpc.id
+
+  tags = {
+    Name = "wavelength-carrier-gateway"
+  }
+}
+
+# Route table for Wavelength subnet
+resource "aws_route_table" "wavelength_rt" {
+  vpc_id = aws_vpc.wavelength_vpc.id
+
+  route {
+    cidr_block         = "0.0.0.0/0"
+    carrier_gateway_id = aws_ec2_carrier_gateway.wavelength_cgw.id
+  }
+
+  tags = {
+    Name = "wavelength-route-table"
+  }
+}
+
+# Wavelength subnet
+resource "aws_subnet" "wavelength_subnet" {
+  vpc_id            = aws_vpc.wavelength_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = var.availabilityzone_wavelength
+
+  tags = {
+    Name = "wavelength-subnet"
+  }
+}
+
+# Associate route table with Wavelength subnet
+resource "aws_route_table_association" "wavelength_rt_assoc" {
+  subnet_id      = aws_subnet.wavelength_subnet.id
+  route_table_id = aws_route_table.wavelength_rt.id
 }
 
 # Data source to get Wavelength subnet details
