@@ -114,7 +114,7 @@ data "aws_ami" "amazon_linux_2" {
 resource "aws_security_group" "ipsec_bgp_sg" {
   name        = "ipsec-bgp-sg"
   description = "Security group for IPSec tunnel and BGP EC2 instance"
-  vpc_id      = data.aws_subnet.wavelength_subnet.vpc_id
+  vpc_id      = aws_vpc.wavelength_vpc.id
 
   # Allow inbound IPSec traffic on UDP 500
   ingress {
