@@ -168,7 +168,7 @@ resource "aws_iam_instance_profile" "session_manager_profile" {
 resource "aws_instance" "ipsec_bgp_instance" {
   ami           = data.aws_ami.amazon_linux_2.id
   instance_type = "t3.medium"  # Adjust instance type as needed
-  subnet_id     = data.aws_subnet.wavelength_subnet.id
+  subnet_id     = aws_subnet.wavelength_subnet.id
   vpc_security_group_ids = [aws_security_group.ipsec_bgp_sg.id]
 
   key_name = var.key_pair_name
