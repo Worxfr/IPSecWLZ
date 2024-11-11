@@ -41,9 +41,9 @@ jobs:
             key=${{ vars.TFSTATE_KEY }}
             region=${{ vars.TFSTATE_REGION }}
           variables: |
-            aws_region=${{ vars.AWS_REGION }}
-            availabilityzone_wavelength=${{ vars.AWS_WLZ }}
-            key_pair_name=${{ vars.EC2_KEY_PAIR }}
+            aws_region="${{ vars.AWS_REGION }}"
+            availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            key_pair_name="${{ vars.EC2_KEY_PAIR }}"
       - name: terraform destroy
         uses: dflook/terraform-destroy@v1
         with:
@@ -51,3 +51,7 @@ jobs:
             bucket=${{ vars.TFSTATE_BUCKET }}
             key=${{ vars.TFSTATE_KEY }}
             region=${{ vars.TFSTATE_REGION }}
+          variables: |
+            aws_region="${{ vars.AWS_REGION }}"
+            availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            key_pair_name="${{ vars.EC2_KEY_PAIR }}"
