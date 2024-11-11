@@ -3,6 +3,10 @@ provider "aws" {
   region = var.aws_region
 }
 
+terraform {
+  backend "s3" {}
+}
+
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string

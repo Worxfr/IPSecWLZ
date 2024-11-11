@@ -32,18 +32,6 @@ jobs:
       - name:  Get STS Id test
         run: |
           aws sts get-caller-identity
-      - name: terraform plan
-        uses: dflook/terraform-plan@v1
-        with:
-          auto_approve: true
-          backend_config: |
-            bucket=${{ vars.TFSTATE_BUCKET }}
-            key=${{ vars.TFSTATE_KEY }}
-            region=${{ vars.TFSTATE_REGION }}
-          variables: |
-            aws_region=${{ vars.AWS_REGION }}
-            availabilityzone_wavelength=${{ vars.AWS_WLZ }}
-            key_pair_name=${{ vars.EC2_KEY_PAIR }}
       - name: terraform apply
         uses: dflook/terraform-apply@v1
         with:
