@@ -102,11 +102,40 @@ The solution deploys all necessary components including VPC, carrier gateway, su
 | peer_ip | IPSec peer IP address | string | 1.1.1.1 |
 | peer_asn | Peer BGP ASN | number | 65000 |
 
+## *s3.tfbackend* file example
+*backend.tf* is used to configure where Terraform stores its state files
+
+The state file tracks the resources Terraform manages and their current status
+
+In this example, we're using an S3 backend which means the state file will be stored in an AWS S3 bucket instead of locally
+This enables team collaboration and provides better security for state files
+
+
+```
+terraform {
+  backend "s3" {
+    bucket         = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+  }
+}
+```
+## terraform.tfvars example
+
+```
+aws_region                  = "us-east-1"
+availabilityzone_wavelength = "us-east-1-wl1-bos-wlz-1" # Boston Wavelength Zone
+key_pair_name              = "wavelength-vpn-key"
+bgp_asn                    = 65000                       # Local BGP ASN
+peer_ip                    = "198.51.100.1"             # Remote peer IP address
+peer_asn                   = 65001                      # Remote peer ASN
+```
+
 ## Usage
 1. Clone the repository
 2. Initialize Terraform:
 ```bash
-terraform init
+terraform init -backend-config=s3.tfbackend
 ```
 3. Configure your variables in a terraform.tfvars file:
 ```
