@@ -10,7 +10,7 @@ terraform {
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
-  default     = "us-east-3"
+  default     = "us-east-1"
 }
 
 # Variable for Wavelength Zone
