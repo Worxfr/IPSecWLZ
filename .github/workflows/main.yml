@@ -43,6 +43,7 @@ jobs:
           variables: |
             aws_region="${{ vars.AWS_REGION }}"
             availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            network_border_group="${{ vars.AWS_NBG }}"
             key_pair_name="${{ vars.EC2_KEY_PAIR }}"
       - name: terraform destroy
         uses: dflook/terraform-destroy@v1
@@ -54,4 +55,5 @@ jobs:
           variables: |
             aws_region="${{ vars.AWS_REGION }}"
             availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            network_border_group="${{ vars.AWS_NBG }}"
             key_pair_name="${{ vars.EC2_KEY_PAIR }}"

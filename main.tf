@@ -19,6 +19,12 @@ variable "availabilityzone_wavelength" {
   type        = string
 }
 
+# Variable for network_border_group
+variable "network_border_group" {
+  description = "network_border_group for Wavelength Zone (without the last letter in some case)"
+  type        = string
+}
+
 # Key pair name variable - for EC2 instance SSH access
 variable "key_pair_name" {
   description = "The name of the EC2 key pair to use"
