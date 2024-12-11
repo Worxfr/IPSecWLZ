@@ -12,7 +12,7 @@ permissions:
   id-token: write   # This is required for requesting the JWT
   contents: read    # This is required for actions/checkout
 jobs:
-  IPSECWLZDeploy:
+  IPSecWLZDeploy:
     runs-on: ubuntu-latest
     concurrency:
       group: example-group
@@ -31,19 +31,16 @@ jobs:
       - name:  Get STS Id test
         run: |
           aws sts get-caller-identity
-      - name: cdk bootstrap
-        uses: youyo/aws-cdk-github-actions@v2
+      - name: terraform apply
+        uses: dflook/terraform-apply@v1
         with:
-          cdk_subcommand: 'bootstrap'
-          cdk_stack: 'aws://${{ vars.AWS_ACCOUNTID }}/${{ vars.AWS_REGION }}'
-          actions_comment: false
-        env: 
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-      - name: cdk deploy
-        uses: youyo/aws-cdk-github-actions@v2
-        with:
-          cdk_subcommand: 'deploy'
-          cdk_args: '--require-approval never'
-          actions_comment: false
-        env: 
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          auto_approve: true
+          backend_config: |
+            bucket=${{ vars.TFSTATE_BUCKET }}
+            key=${{ vars.TFSTATE_KEY }}
+            region=${{ vars.TFSTATE_REGION }}
+          variables: |
+            aws_region="${{ vars.AWS_REGION }}"
+            availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            key_pair_name="${{ vars.EC2_KEY_PAIR }}"
+

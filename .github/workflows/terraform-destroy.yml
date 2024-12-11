@@ -12,7 +12,7 @@ permissions:
   id-token: write   # This is required for requesting the JWT
   contents: read    # This is required for actions/checkout
 jobs:
-  IPSECWLZDestroy:
+  IPSecWLZdestroy:
     runs-on: ubuntu-latest
     concurrency:
       group: example-group
@@ -31,11 +31,14 @@ jobs:
       - name:  Get STS Id test
         run: |
           aws sts get-caller-identity
-      - name: cdk destroy
-        uses: youyo/aws-cdk-github-actions@v2
+      - name: terraform destroy
+        uses: dflook/terraform-destroy@v1
         with:
-          cdk_subcommand: 'destroy'
-          cdk_args: '--force'
-          actions_comment: false
-        env: 
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          backend_config: |
+            bucket=${{ vars.TFSTATE_BUCKET }}
+            key=${{ vars.TFSTATE_KEY }}
+            region=${{ vars.TFSTATE_REGION }}
+          variables: |
+            aws_region="${{ vars.AWS_REGION }}"
+            availabilityzone_wavelength="${{ vars.AWS_WLZ }}"
+            key_pair_name="${{ vars.EC2_KEY_PAIR }}"
