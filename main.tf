@@ -285,7 +285,7 @@ resource "aws_instance" "ipsec_bgp_instance" {
 
 # Create Elastic IP for Wavelength EC2 instance
 resource "aws_eip" "wavelength_ip" {
-  network_border_group = var.availabilityzone_wavelength
+  network_border_group = var.network_border_group
   instance             = aws_instance.ipsec_bgp_instance.id
   tags = {
     Name = "Wavelength EC2 EIP"
