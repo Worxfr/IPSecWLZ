@@ -7,52 +7,6 @@ terraform {
   backend "s3" {}
 }
 
-variable "aws_region" {
-  description = "AWS region for resource deployment"
-  type        = string
-  default     = "us-east-1"
-}
-
-# Variable for Wavelength Zone
-variable "availabilityzone_wavelength" {
-  description = "Availability Zone ID for Wavelength Zone"
-  type        = string
-}
-
-# Variable for network_border_group
-variable "network_border_group" {
-  description = "network_border_group for Wavelength Zone (without the last letter in some case)"
-  type        = string
-}
-
-# Key pair name variable - for EC2 instance SSH access
-variable "key_pair_name" {
-  description = "The name of the EC2 key pair to use"
-  type        = string
-  default     = "EC2-key-pair"
-}
-
-# BGP ASN variable - for BGP routing configuration
-variable "bgp_asn" {
-  description = "BGP Autonomous System Number"
-  type        = number
-  default     = 65000
-}
-
-# Peer IP variable - for IPSec tunnel configuration
-variable "peer_ip" {
-  description = "Peer IP"
-  type        = string
-  default     = "1.1.1.1"
-}
-
-# Peer ASN variable - for BGP routing with peer
-variable "peer_asn" {
-  description = "Peer  BGP Autonomous System Number"
-  type        = number
-  default     = 65000
-}
-
 # VPC for Wavelength Zone deployment
 resource "aws_vpc" "wavelength_vpc" {
   cidr_block           = "10.0.0.0/16"
@@ -134,6 +88,13 @@ resource "aws_security_group" "ipsec_bgp_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 4500
+    to_port     = 4500
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
 
   # Allow all outbound traffic
   egress {
@@ -182,6 +143,7 @@ resource "aws_instance" "ipsec_bgp_instance" {
   vpc_security_group_ids = [aws_security_group.ipsec_bgp_sg.id]
 
   key_name = var.key_pair_name
+  user_data_replace_on_change = true
 
   iam_instance_profile = aws_iam_instance_profile.session_manager_profile.name
 
@@ -189,95 +151,119 @@ resource "aws_instance" "ipsec_bgp_instance" {
     Name = "IPSec-BGP-Instance"
   }
 
-  # User data script to configure IPSec and BGP
-  user_data = <<-EOF
-              #!/bin/bash
+  # User data script to configure IPSec and BGPtopq
+user_data = <<EOF
+#!/bin/bash
+set -e
 
-              # Update package lists and install necessary packages
-              apt-get update
-              apt-get install -y strongswan libcharon-extra-plugins frr
+# Update and install required packages
+sleep 30
+apt-get update -y
+apt-get install -y strongswan libcharon-extra-plugins frr iproute2
+touch /tmp/ETAPE1
 
-              # Configure IPsec (StrongSwan)
-              cat <<EOT > /etc/ipsec.conf
-              config setup
-                  charondebug="all"
-                  uniqueids=yes
+# StrongSwan Configuration
+cat <<EOT > /etc/ipsec.conf
+config setup
+  charondebug="ike 1, knl 1, cfg 0"
+conn ikev2-vti
+  auto=start
+  compress=no
+  type=tunnel
+  keyexchange=ikev2
+  fragmentation=yes
+  forceencaps=yes
+  ike=aes256-sha256-modp2048!
+  esp=aes256-sha256-modp2048!
+  left=%defaultroute
+  leftid=@LOCALIP  # Fix: Use self.public_ip instead of empty leftid
+  leftsubnet=0.0.0.0/0
+  right=${var.peer_ip}
+  rightid=@${var.peer_ip}
+  rightsubnet=0.0.0.0/0
+  authby=secret
+  mark=100
+  vti-interface=vti100
+  vti-routing=no
+  leftvti=172.16.0.1/30
+  rightvti=172.16.0.2/30
+EOT
 
-              conn ipsec-tunnel
-                  auto=start
-                  left=%defaultroute
-                  leftsubnet=0.0.0.0/0
-                  right=REMOTEIP
-                  rightsubnet=0.0.0.0/0
-                  ike=aes256-sha256-modp1024!
-                  esp=aes256-sha256-modp1024!
-                  keyingtries=0
-                  ikelifetime=1h
-                  lifetime=8h
-                  dpddelay=30
-                  dpdtimeout=120
-                  dpdaction=restart
-                  mark=100
-                  vti-interface=vti0
-                  vti-routing=no
-                  leftvti=169.254.0.1/30
-                  rightvti=169.254.0.2/30
-              EOT
+touch /tmp/ETAPE2
 
-              sed -i s/REMOTEIP/$REMOTEIP/g /etc/ipsec.conf
+# Shared key configuration
+echo ": PSK \"${var.ipsec_psk}\"" > /etc/ipsec.secrets
+chmod 600 /etc/ipsec.secrets  # Add: Secure the secrets file
 
-              # Configure VTI interface
-              cat <<EOT > /etc/systemd/network/vti0.netdev
-              [NetDev]
-              Name=vti0
-              Kind=vti
-              EOT
+touch /tmp/ETAPE3
 
-              cat <<EOT > /etc/systemd/network/vti0.network
-              [Match]
-              Name=vti0
+# VTI interface configuration
+cat <<EOT > /etc/systemd/network/vti100.netdev
+[NetDev]
+Name=vti100
+Kind=vti
+MTUBytes=1419
 
-              [Network]
-              Address=169.254.0.1/30
-              IPMasquerade=yes
-              EOT
+[Tunnel]
+Local=LOCALIP  # Fix: Replace @#LOCALIP with self.public_ip
+Remote=${var.peer_ip}
+Key=100
+EOT
 
-              # Enable and start IPsec service
-              systemctl enable strongswan
-              systemctl start strongswan
+cat << EOT > /etc/systemd/network/vti100.network
+[Match]
+Name=vti100
 
-              # Configure FRRouting (BGP)
-              cat <<EOT > /etc/frr/daemons
-              bgpd=yes
-              EOT
+[Network]
+Address=172.16.0.1/30
+IPForward=yes  # Add: Enable IP forwarding at interface level
+EOT
 
-              cat <<EOT > /etc/frr/frr.conf
-              frr version 8.1
-              frr defaults traditional
-              hostname ipsec-bgp-router
-              log syslog informational
-              service integrated-vtysh-config
-              !
-              router bgp ${var.bgp_asn}
-              neighbor 169.254.0.2 remote-as ${var.peer_asn}
-              !
-              address-family ipv4 unicast
-                network 10.0.0.0/8
-                neighbor 169.254.0.2 activate
-              exit-address-family
-              !
-              line vty
-              !
-              EOT
+# Enable IP forwarding
+echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ipforward.conf  # Fix: Use sysctl.d instead of direct file
+sysctl --system  # Fix: Use --system to load all configurations
 
-              # Enable and start FRRouting service
-              systemctl enable frr
-              systemctl start frr
+# FRR Configuration for BGP
+sed -i 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
 
-              # Reboot the instance to apply changes
-              reboot
+cat << EOT > /etc/frr/frr.conf
+frr version 8.1
+frr defaults traditional
+hostname vpn-router
+log syslog informational
+service integrated-vtysh-config
+!
+router bgp ${var.bgp_asn_local}
+neighbor 172.16.0.2 remote-as ${var.bgp_asn_remote}
+neighbor 172.16.0.2 timers 10 30  # Add: BGP timers for better reliability
+!
+address-family ipv4 unicast
+  network 10.0.1.0/24
+  neighbor 172.16.0.2 activate
+  neighbor 172.16.0.2 soft-reconfiguration inbound  # Add: Soft reconfiguration for easier troubleshooting
+exit-address-family
+!
+line vty
+!
+EOT
 
-              EOF
+# Set proper permissions for FRR configuration
+chown frr:frr /etc/frr/frr.conf
+chmod 640 /etc/frr/frr.conf
+
+# Service management
+systemctl daemon-reload  # Add: Reload systemd after creating new unit files
+systemctl enable --now systemd-networkd
+systemctl enable strongswan-starter
+systemctl restart strongswan-starter
+systemctl enable frr
+systemctl restart frr
+
+# Add route for remote subnet
+# ip route add {var.remote_subnet} via 172.16.0.2 dev vti100  # Uncomment if needed
+
+EOF
+
 
               
   depends_on = [  ]
@@ -297,9 +283,4 @@ resource "aws_eip_association" "eip_assoc" {
   instance_id   = aws_instance.ipsec_bgp_instance.id
   allocation_id = aws_eip.wavelength_ip.allocation_id
 }
-
-
-
-
-
 
