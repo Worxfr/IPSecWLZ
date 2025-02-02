@@ -145,6 +145,8 @@ resource "aws_instance" "ipsec_bgp_instance" {
   key_name = var.key_pair_name
   user_data_replace_on_change = true
 
+  source_dest_check = false
+
   iam_instance_profile = aws_iam_instance_profile.session_manager_profile.name
 
   tags = {
@@ -157,8 +159,16 @@ user_data = <<EOF
 set -e
 
 # Update and install required packages
-sleep 30
+sleep 10
+while pgrep -f "apt|dpkg" > /dev/null; do
+    echo "Waiting for other package manager processes to finish..."
+    sleep 10
+done
 apt-get update -y
+while pgrep -f "apt|dpkg" > /dev/null; do
+    echo "Waiting for other package manager processes to finish..."
+    sleep 10
+done
 apt-get install -y strongswan libcharon-extra-plugins frr iproute2
 touch /tmp/ETAPE1
 
@@ -173,20 +183,21 @@ conn ikev2-vti
   keyexchange=ikev2
   fragmentation=yes
   forceencaps=yes
-  ike=aes256-sha256-modp2048!
-  esp=aes256-sha256-modp2048!
+  ike=aes256-sha256-modp2048
+  esp=aes256-sha256-modp2048
   left=%defaultroute
-  leftid=@LOCALIP  # Fix: Use self.public_ip instead of empty leftid
+  leftid=@PUBLICLOCAL  # Fix: Use self.public_ip instead of empty leftid
   leftsubnet=0.0.0.0/0
   right=${var.peer_ip}
-  rightid=@${var.peer_ip}
+  rightid=%any
   rightsubnet=0.0.0.0/0
   authby=secret
-  mark=100
+  mark=42
   vti-interface=vti100
   vti-routing=no
   leftvti=172.16.0.1/30
   rightvti=172.16.0.2/30
+  leftupdown=/etc/strongswan.d/ipsec-vti.sh
 EOT
 
 touch /tmp/ETAPE2
@@ -198,29 +209,22 @@ chmod 600 /etc/ipsec.secrets  # Add: Secure the secrets file
 touch /tmp/ETAPE3
 
 # VTI interface configuration
-cat <<EOT > /etc/systemd/network/vti100.netdev
-[NetDev]
-Name=vti100
-Kind=vti
-MTUBytes=1419
-
-[Tunnel]
-Local=LOCALIP  # Fix: Replace @#LOCALIP with self.public_ip
-Remote=${var.peer_ip}
-Key=100
-EOT
-
-cat << EOT > /etc/systemd/network/vti100.network
-[Match]
-Name=vti100
-
-[Network]
-Address=172.16.0.1/30
-IPForward=yes  # Add: Enable IP forwarding at interface level
+cat <<EOT > /etc/strongswan.d/ipsec-vti.sh
+#!/bin/bash
+sudo ip link add vti100 type vti local PRIVATELOCAL remote ${var.peer_ip} key 42
+sudo ip addr add 172.16.0.1/30 remote 172.16.0.2/30 dev vti100
+sudo ip link set vti100 up mtu 1419
+sudo iptables -t mangle -A FORWARD -o vti100 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${var.peer_ip} -j MARK --set-xmark 42
+sudo ip route flush table 220
 EOT
 
 # Enable IP forwarding
-echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ipforward.conf  # Fix: Use sysctl.d instead of direct file
+echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ipsecconfig.conf  # Fix: Use sysctl.d instead of direct file
+echo "net.ipv4.conf.vti100.disable_policy=1" >> /etc/sysctl.d/99-ipsecconfig.conf  # Fix: Use sysctl.d instead of direct file
+echo "net.ipv4.conf.vti100.rp_filter=2" >> /etc/sysctl.d/99-ipsecconfig.conf  # Fix: Use sysctl.d instead of direct file
+echo "net.ipv4.conf.ens5.disable_xfrm=1" >> /etc/sysctl.d/99-ipsecconfig.conf  # Fix: Use sysctl.d instead of direct file
+echo "net.ipv4.conf.ens5.disable_policy=1" >> /etc/sysctl.d/99-ipsecconfig.conf  # Fix: Use sysctl.d instead of direct file
 sysctl --system  # Fix: Use --system to load all configurations
 
 # FRR Configuration for BGP
@@ -238,7 +242,7 @@ neighbor 172.16.0.2 remote-as ${var.bgp_asn_remote}
 neighbor 172.16.0.2 timers 10 30  # Add: BGP timers for better reliability
 !
 address-family ipv4 unicast
-  network 10.0.1.0/24
+  network ${var.remote_subnet}
   neighbor 172.16.0.2 activate
   neighbor 172.16.0.2 soft-reconfiguration inbound  # Add: Soft reconfiguration for easier troubleshooting
 exit-address-family
@@ -247,9 +251,16 @@ line vty
 !
 EOT
 
+TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+PRIVATELOCAL=`curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4`
+PUBLICLOCAL=`curl http://v4.ipadd.re`
+sed -i "s/PUBLICLOCAL/$PUBLICLOCAL/g" /etc/ipsec.conf
+sed -i "s/PRIVATELOCAL/$PRIVATELOCAL/g" /etc/strongswan.d/ipsec-vti.sh
+
 # Set proper permissions for FRR configuration
 chown frr:frr /etc/frr/frr.conf
 chmod 640 /etc/frr/frr.conf
+chmod 700 /etc/strongswan.d/ipsec-vti.sh
 
 # Service management
 systemctl daemon-reload  # Add: Reload systemd after creating new unit files
@@ -260,7 +271,7 @@ systemctl enable frr
 systemctl restart frr
 
 # Add route for remote subnet
-# ip route add {var.remote_subnet} via 172.16.0.2 dev vti100  # Uncomment if needed
+ip route add ${var.remote_subnet} via 172.16.0.2 dev vti100  # Uncomment if needed
 
 EOF
 

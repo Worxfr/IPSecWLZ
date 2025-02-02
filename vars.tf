@@ -44,9 +44,16 @@ variable "peer_ip" {
   default     = "1.1.1.1"
 }
 
-# Peer IP variable - for IPSec tunnel configuration
+# Peer PreSharedKey - for IPSec tunnel configuration
 variable "ipsec_psk" {
   description = "IPSEC PSK"
   type        = string
   default     = "1234567890"
+}
+
+# Peer IP variable - for IPSec tunnel configuration
+variable "remote_subnet" {
+  description = "RemoteSubnet"
+  type        = string
+  default     = "10.1.0.0/24"
 }
