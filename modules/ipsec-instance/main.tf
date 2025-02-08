@@ -136,7 +136,7 @@ conn ikev2-vti
   forceencaps=yes
   ike=aes256-sha256-modp2048
   esp=aes256-sha256-modp2048
-  left=%defaultroute
+  left=PRIVATELOCAL
   leftid=@PUBLICLOCAL
   leftsubnet=0.0.0.0/0
   right=${local.remote_ip}
@@ -217,6 +217,7 @@ PRIVATELOCAL=`curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/
 PUBLICLOCAL=`curl http://v4.ipadd.re`
 sed -i "s/PUBLICLOCAL/$PUBLICLOCAL/g" /etc/ipsec.conf
 sed -i "s/PRIVATELOCAL/$PRIVATELOCAL/g" /etc/strongswan.d/ipsec-vti.sh
+sed -i "s/PRIVATELOCAL/$PRIVATELOCAL/g" /etc/ipsec.conf
 
 chown frr:frr /etc/frr/frr.conf
 chmod 640 /etc/frr/frr.conf
@@ -238,3 +239,63 @@ resource "aws_eip_association" "eip_assoc" {
   instance_id   = aws_instance.ipsec_bgp_instance.id
   allocation_id = var.elastic_ip
 }
+
+# Security groups for secondary ENIs
+resource "aws_security_group" "secondary_eni_sg" {
+  for_each = { for idx, vpc in var.secondary_vpcs : idx => vpc }
+  
+  name        = "secondary-eni-sg-${each.key}"
+  description = "Security group for secondary ENI ${each.key}"
+  vpc_id      = each.value.vpc_id
+
+  # Default rules if no custom rules provided
+  dynamic "ingress" {
+    for_each = length(each.value.security_group_rules) > 0 ? each.value.security_group_rules : [{
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+    }]
+    
+    content {
+      from_port   = ingress.value.from_port
+      to_port     = ingress.value.to_port
+      protocol    = ingress.value.protocol
+      cidr_blocks = ingress.value.cidr_blocks
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "secondary-eni-sg-${each.key}"
+  }
+}
+
+# Create secondary ENIs
+resource "aws_network_interface" "secondary_eni" {
+  for_each = { for idx, vpc in var.secondary_vpcs : idx => vpc }
+
+  subnet_id       = each.value.subnet_id
+  security_groups = [aws_security_group.secondary_eni_sg[each.key].id]
+  description     = each.value.description
+
+  tags = {
+    Name = "CrossVPC-Secondary-ENI-${each.key}"
+  }
+}
+
+# Attach secondary ENIs to the instance
+resource "aws_network_interface_attachment" "secondary_eni_attachment" {
+  for_each = { for idx, vpc in var.secondary_vpcs : idx => vpc }
+
+  instance_id          = aws_instance.ipsec_bgp_instance.id
+  network_interface_id = aws_network_interface.secondary_eni[each.key].id
+  device_index         = each.key + 1  # Start from index 1 as 0 is primary ENI
+}
+

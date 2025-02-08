@@ -60,3 +60,7 @@ output "wavelength_instance_is_wlz" {
   description = "Whether the wavelength EC2 instance is in Wavelength Zone" 
   value       = module.ipsec-wlz.is_wlz
 }
+
+output "secondary_eni_details" {
+  value = module.ipsec-wlz.secondary_enis
+}

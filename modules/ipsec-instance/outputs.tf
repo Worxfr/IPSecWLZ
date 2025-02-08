@@ -22,3 +22,17 @@ output "is_wlz" {
   description = "Flag indicating if deployment is in WLZ"
   value       = var.is_wlz
 }
+
+output "secondary_enis" {
+  description = "Map of secondary ENI details"
+  value = {
+    for idx, eni in aws_network_interface.secondary_eni : idx => {
+      eni_id      = eni.id
+      private_ip  = eni.private_ip
+      vpc_id      = var.secondary_vpcs[idx].vpc_id
+      subnet_id   = var.secondary_vpcs[idx].subnet_id
+      description = var.secondary_vpcs[idx].description
+    }
+  }
+}
+
