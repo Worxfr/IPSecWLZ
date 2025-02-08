@@ -40,6 +40,11 @@ We have build a dedicated Terraform module, to build an IPsec EC2 Instance, whic
 
 ![IpsecInstance](img/IpsecInstance.png)
 
+## Module IpsecInstance
+
+More details here : 
+[Module IpsecInstance](modules/IpsecInstance/README.md)
+
 
 ### Key Benefits
 - Direct VPN termination in Wavelength Zone
