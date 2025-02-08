@@ -10,7 +10,7 @@ output "instance_private_ip" {
 
 output "instance_public_ip" {
   description = "Public IP (EIP) of the EC2 instance"
-  value       = aws_eip.wavelength_ip.carrier_ip
+  value       = aws_instance.ipsec_bgp_instance.public_ip
 }
 
 output "security_group_id" {

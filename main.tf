@@ -58,6 +58,13 @@ resource "aws_route_table_association" "wavelength_rt_assoc" {
   route_table_id = aws_route_table.wavelength_rt.id
 }
 
+# Create Elastic IP for the instance
+resource "aws_eip" "wavelength_ip" {
+  network_border_group = var.network_border_group
+  tags = {
+    Name = "IPSec-BGP-Instance-EIP"
+  }
+}
 
 module "ipsec_instance" {
   source = "./modules/ipsec-instance"
@@ -70,6 +77,6 @@ module "ipsec_instance" {
   bgp_asn_local      = var.bgp_asn_local
   bgp_asn_remote     = var.bgp_asn_remote
   remote_subnet      = var.remote_subnet
-  network_border_group = var.network_border_group
+  elastic_ip         = aws_eip.wavelength_ip.id
 }
 

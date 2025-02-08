@@ -22,7 +22,7 @@ output "instance_private_ip" {
 
 output "instance_public_ip" {
   description = "Public IP (EIP) of the EC2 instance"
-  value       = module.ipsec_instance.instance_public_ip
+  value       = aws_eip.wavelength_ip.carrier_ip
 }
 
 output "carrier_gateway_id" {

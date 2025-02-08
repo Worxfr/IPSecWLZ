@@ -39,7 +39,7 @@ variable "remote_subnet" {
   type        = string
 }
 
-variable "network_border_group" {
-  description = "Network border group for the EIP"
+variable "elastic_ip" {
+  description = "Elastic IP address for the VPN instance"
   type        = string
 }

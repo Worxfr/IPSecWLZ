@@ -217,17 +217,8 @@ ip route add ${var.remote_subnet} via 172.16.0.2 dev vti100
 EOF
 }
 
-# Create Elastic IP for the instance
-resource "aws_eip" "wavelength_ip" {
-  network_border_group = var.network_border_group
-  instance            = aws_instance.ipsec_bgp_instance.id
-  tags = {
-    Name = "IPSec-BGP-Instance-EIP"
-  }
-}
-
 # Associate Elastic IP with EC2 instance
 resource "aws_eip_association" "eip_assoc" {
   instance_id   = aws_instance.ipsec_bgp_instance.id
-  allocation_id = aws_eip.wavelength_ip.id
+  allocation_id = var.elastic_ip
 }
