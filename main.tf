@@ -126,6 +126,34 @@ resource "aws_eip" "wavelength_ip" {
   }
 }
 
+
+
+
+### TEST Multi VPC
+
+# VPC-2 for Wavelength Zone deployment
+resource "aws_vpc" "wavelength_vpc_2" {
+  cidr_block           = "192.168.0.0/23"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "wavelength-vpc-2"
+  }
+}
+
+# Wavelength subnet
+resource "aws_subnet" "wavelength_subnet_vpc_2" {
+  vpc_id            = aws_vpc.wavelength_vpc_2.id
+  cidr_block        = "192.168.0.0/24"
+  availability_zone = var.availabilityzone_wavelength
+
+  tags = {
+    Name = "wavelength-subnet-vpc-2"
+  }
+}
+
+
 module "ipsec-wlz"  {
   source = "./modules/ipsec-instance"
 
@@ -140,6 +168,23 @@ module "ipsec-wlz"  {
   bgp_asn_local      = var.bgp_asn_local
   bgp_asn_remote     = var.bgp_asn_remote
   is_wlz             = true
+
+  # Multiple secondary VPCs configuration
+  secondary_vpcs = [
+    {
+      vpc_id      = aws_vpc.wavelength_vpc_2.id
+      subnet_id   = aws_subnet.wavelength_subnet_vpc_2.id
+      description = "Cross-VPC ENI for VPC 1"
+      security_group_rules = [
+        {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["10.0.0.0/8"]
+        }
+      ]
+    }
+  ]
 
   depends_on = [ aws_eip.wavelength_ip, aws_eip.region_ip ]
 }

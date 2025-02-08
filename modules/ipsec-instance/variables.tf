@@ -56,5 +56,21 @@ variable "is_wlz" {
   default     = false
 }
 
+variable "secondary_vpcs" {
+  description = "List of secondary VPCs configurations for cross-VPC ENIs"
+  type = list(object({
+    vpc_id              = string
+    subnet_id           = string
+    description         = optional(string, "Cross-VPC ENI")
+    security_group_rules = optional(list(object({
+      from_port   = number
+      to_port     = number
+      protocol    = string
+      cidr_blocks = list(string)
+    })), [])
+  }))
+  default = []
+}
+
 
 
