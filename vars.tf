@@ -57,3 +57,17 @@ variable "remote_subnet" {
   type        = string
   default     = "10.1.0.0/24"
 }
+
+# Private IP 1 variable - for IPSec tunnel configuration
+variable "private_ip_1" {
+  description = "Private IP 1"
+  type        = string
+  default     = "172.16.0.1"
+}
+
+# Private IP 2 variable - for IPSec tunnel configuration
+variable "private_ip_2" {
+  description = "Private IP 2" 
+  type        = string
+  default     = "172.16.0.2"
+}

@@ -13,10 +13,6 @@ variable "key_pair_name" {
   type        = string
 }
 
-variable "peer_ip" {
-  description = "IP address of the IPSec peer"
-  type        = string
-}
 
 variable "ipsec_psk" {
   description = "Pre-shared key for IPSec"
@@ -34,12 +30,31 @@ variable "bgp_asn_remote" {
   type        = string
 }
 
-variable "remote_subnet" {
-  description = "Remote subnet CIDR"
-  type        = string
-}
-
 variable "elastic_ip" {
   description = "Elastic IP address for the VPN instance"
   type        = string
 }
+
+variable "remote_public_ip" {
+  description = "IPSEC public IP address for the remote endpoint"
+  type        = string
+}
+
+variable "remote_private_ip" {
+  description = "IPSEC Private IP address for the remote endpoint in the IPSEC tunnel"
+  type        = string
+}
+
+variable "local_private_ip" {
+  description = "IPSEC Private IP address for the local endpoint in the IPSEC tunnel" 
+  type        = string
+}
+
+variable "is_wlz" {
+  description = "Boolean flag to indicate if this is a WaveLength Zone deployment"
+  type        = bool
+  default     = false
+}
+
+
+

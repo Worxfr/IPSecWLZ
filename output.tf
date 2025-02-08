@@ -1,4 +1,30 @@
 
+output "region_vpc_id" {
+  description = "ID of the Region VPC"
+  value       = aws_vpc.region_vpc.id
+}
+
+output "region_subnet_id" {
+  description = "ID of the Region subnet"
+  value       = aws_subnet.region_subnet.id
+}
+
+
+output "region_instance_id" {
+  description = "ID of the EC2 instance"
+  value       = module.ipsec-region.instance_id
+}
+
+output "region_instance_private_ip" {
+  description = "Private IP of the region EC2 instance"
+  value       = module.ipsec-region.instance_private_ip
+}
+
+output "region_instance_public_ip" {
+  description = "Public IP (EIP) of the region EC2 instance"
+  value       = module.ipsec-region.instance_public_ip
+}
+
 
 output "wavelength_vpc_id" {
   description = "ID of the Wavelength VPC"
@@ -10,22 +36,27 @@ output "wavelength_subnet_id" {
   value       = aws_subnet.wavelength_subnet.id
 }
 
-output "instance_id" {
-  description = "ID of the EC2 instance"
-  value       = module.ipsec_instance.instance_id
+output "wavelength_instance_id" {
+  description = "ID of the wavelength EC2 instance"
+  value       = module.ipsec-wlz.instance_id
 }
 
-output "instance_private_ip" {
-  description = "Private IP of the EC2 instance"
-  value       = module.ipsec_instance.instance_private_ip
+output "wavelength_instance_private_ip" {
+  description = "Private IP of the wavelength EC2 instance"
+  value       = module.ipsec-wlz.instance_private_ip
 }
 
-output "instance_public_ip" {
-  description = "Public IP (EIP) of the EC2 instance"
-  value       = aws_eip.wavelength_ip.carrier_ip
+output "wavelength_instance_public_ip" {
+  description = "Public IP (EIP) of the wavelength EC2 instance"
+  value       = module.ipsec-wlz.instance_public_ip
 }
 
-output "carrier_gateway_id" {
-  description = "ID of the Carrier Gateway"
-  value       = aws_ec2_carrier_gateway.wavelength_cgw.id
+output "region_instance_is_wlz" {
+  description = "Whether the region EC2 instance is in Wavelength Zone"
+  value       = module.ipsec-region.is_wlz
+}
+
+output "wavelength_instance_is_wlz" {
+  description = "Whether the wavelength EC2 instance is in Wavelength Zone" 
+  value       = module.ipsec-wlz.is_wlz
 }

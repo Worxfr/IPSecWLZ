@@ -14,6 +14,14 @@ data "aws_ami" "amazon_linux_2" {
   }
 }
 
+resource "random_string" "rand" {
+  length = 8
+  lower  = true
+  upper = false
+  special = false 
+  numeric = true
+}
+
 # Security group for EC2 instance
 resource "aws_security_group" "ipsec_bgp_sg" {
   name        = "ipsec-bgp-sg"
@@ -44,8 +52,7 @@ resource "aws_security_group" "ipsec_bgp_sg" {
 
 # IAM role for AWS Systems Manager Session Manager access
 resource "aws_iam_role" "session_manager_role" {
-  name = "SessionManagerRole"
-
+  name = "SessionManagerRole-${random_string.rand.result}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -66,9 +73,19 @@ resource "aws_iam_role_policy_attachment" "session_manager_policy" {
 }
 
 resource "aws_iam_instance_profile" "session_manager_profile" {
-  name = "SessionManagerProfile"
+  name = "SessionManagerProfile-${random_string.rand.result}"
   role = aws_iam_role.session_manager_role.name
 }
+
+data "aws_eip" "remote_public_ip" {
+  id = var.remote_public_ip
+}
+
+# Choose between public_ip and carrier_ip for the remote_ip based on is_wlz variable
+locals {
+  remote_ip = var.is_wlz ?  data.aws_eip.remote_public_ip.public_ip : data.aws_eip.remote_public_ip.carrier_ip
+}  
+
 
 # EC2 instance for IPSec tunnel and BGP
 resource "aws_instance" "ipsec_bgp_instance" {
@@ -85,7 +102,7 @@ resource "aws_instance" "ipsec_bgp_instance" {
   iam_instance_profile = aws_iam_instance_profile.session_manager_profile.name
 
   tags = {
-    Name = "IPSec-BGP-Instance"
+    Name = "IPSec-BGP-Instance-${random_string.rand.result}"
   }
 
   user_data = <<EOF
@@ -122,15 +139,15 @@ conn ikev2-vti
   left=%defaultroute
   leftid=@PUBLICLOCAL
   leftsubnet=0.0.0.0/0
-  right=${var.peer_ip}
+  right=${local.remote_ip}
   rightid=%any
   rightsubnet=0.0.0.0/0
   authby=secret
   mark=42
   vti-interface=vti100
   vti-routing=no
-  leftvti=172.16.0.1/30
-  rightvti=172.16.0.2/30
+  leftvti=${var.local_private_ip}/30
+  rightvti=${var.remote_private_ip}/30
   leftupdown=/etc/strongswan.d/ipsec-vti.sh
 EOT
 
@@ -143,11 +160,11 @@ touch /tmp/ETAPE3
 
 cat <<EOT > /etc/strongswan.d/ipsec-vti.sh
 #!/bin/bash
-sudo ip link add vti100 type vti local PRIVATELOCAL remote ${var.peer_ip} key 42
-sudo ip addr add 172.16.0.1/30 remote 172.16.0.2/30 dev vti100
+sudo ip link add vti100 type vti local PRIVATELOCAL remote ${local.remote_ip} key 42
+sudo ip addr add ${var.local_private_ip}/30 remote ${var.remote_private_ip}/30 dev vti100
 sudo ip link set vti100 up mtu 1419
 sudo iptables -t mangle -A FORWARD -o vti100 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${var.peer_ip} -j MARK --set-xmark 42
+sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${local.remote_ip} -j MARK --set-xmark 42
 sudo ip route flush table 220
 EOT
 
@@ -168,17 +185,17 @@ log syslog informational
 service integrated-vtysh-config
 !
 router bgp ${var.bgp_asn_local}
-bgp router-id 172.16.0.1
-neighbor 172.16.0.2 remote-as ${var.bgp_asn_remote}
-neighbor 172.16.0.2 timers 10 30
+bgp router-id ${var.local_private_ip}
+neighbor ${var.remote_private_ip} remote-as ${var.bgp_asn_remote}
+neighbor ${var.remote_private_ip} timers 10 30
 !
 address-family ipv4 unicast
-  neighbor 172.16.0.2 activate
-  neighbor 172.16.0.2 soft-reconfiguration inbound
+  neighbor ${var.remote_private_ip} activate
+  neighbor ${var.remote_private_ip} soft-reconfiguration inbound
   redistribute static
   redistribute connect
-  neighbor 172.16.0.2 route-map ALLOW_RFC1918 in
-    neighbor 172.16.0.2 route-map ALLOW_RFC1918 out
+  neighbor ${var.remote_private_ip} route-map ALLOW_RFC1918 in
+    neighbor ${var.remote_private_ip} route-map ALLOW_RFC1918 out
 exit-address-family
 exit
 !
@@ -212,7 +229,6 @@ systemctl restart strongswan-starter
 systemctl enable frr
 systemctl restart frr
 
-ip route add ${var.remote_subnet} via 172.16.0.2 dev vti100
 
 EOF
 }

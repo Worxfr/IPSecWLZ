@@ -8,6 +8,66 @@ terraform {
 }
 
 # VPC for Wavelength Zone deployment
+resource "aws_vpc" "region_vpc" {
+  cidr_block           = "10.100.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "region-vpc"
+  }
+}
+
+# Internet Gateway for region VPC
+resource "aws_internet_gateway" "region_igw" {
+  vpc_id = aws_vpc.region_vpc.id
+
+  tags = {
+    Name = "region-internet-gateway"
+  }
+}
+
+
+# Region subnet
+resource "aws_subnet" "region_subnet" {
+  vpc_id            = aws_vpc.region_vpc.id
+  cidr_block        = "10.100.1.0/24"
+  availability_zone = "${var.aws_region}a"  
+  tags = {
+    Name = "region-subnet"
+  }
+}
+
+# Route table for region VPC
+resource "aws_route_table" "region_rt" {
+  vpc_id = aws_vpc.region_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.region_igw.id
+  }
+
+  tags = {
+    Name = "region-route-table"
+  }
+}
+
+# Associate route table with region subnet
+resource "aws_route_table_association" "region_rt_assoc" {
+  subnet_id      = aws_subnet.region_subnet.id
+  route_table_id = aws_route_table.region_rt.id
+}
+
+# Create Elastic IP for the region instance
+resource "aws_eip" "region_ip" {
+  domain = "vpc"
+  tags = {
+    Name = "Region-Instance-EIP"
+  }
+}
+
+
+# VPC for Wavelength Zone deployment
 resource "aws_vpc" "wavelength_vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
@@ -66,17 +126,39 @@ resource "aws_eip" "wavelength_ip" {
   }
 }
 
-module "ipsec_instance" {
+module "ipsec-wlz"  {
   source = "./modules/ipsec-instance"
 
   vpc_id              = aws_vpc.wavelength_vpc.id
   subnet_id           = aws_subnet.wavelength_subnet.id
   key_pair_name       = var.key_pair_name
-  peer_ip            = var.peer_ip
+  remote_public_ip   = aws_eip.region_ip.id
+  elastic_ip         = aws_eip.wavelength_ip.id
+  remote_private_ip  = var.private_ip_2
+  local_private_ip   = var.private_ip_1
   ipsec_psk          = var.ipsec_psk
   bgp_asn_local      = var.bgp_asn_local
   bgp_asn_remote     = var.bgp_asn_remote
-  remote_subnet      = var.remote_subnet
-  elastic_ip         = aws_eip.wavelength_ip.id
+  is_wlz             = true
+
+  depends_on = [ aws_eip.wavelength_ip, aws_eip.region_ip ]
+}
+
+module "ipsec-region"  {
+  source = "./modules/ipsec-instance"
+
+  vpc_id              = aws_vpc.region_vpc.id
+  subnet_id           = aws_subnet.region_subnet.id
+  key_pair_name       = var.key_pair_name
+  remote_public_ip    = aws_eip.wavelength_ip.id 
+  elastic_ip         = aws_eip.region_ip.id
+  remote_private_ip  = var.private_ip_1
+  local_private_ip   = var.private_ip_2
+  ipsec_psk          = var.ipsec_psk
+  bgp_asn_local      = var.bgp_asn_remote
+  bgp_asn_remote     = var.bgp_asn_local
+
+  depends_on = [ aws_eip.region_ip, aws_eip.wavelength_ip ]
+
 }
 
