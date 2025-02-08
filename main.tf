@@ -238,17 +238,31 @@ log syslog informational
 service integrated-vtysh-config
 !
 router bgp ${var.bgp_asn_local}
+bgp router-id 172.16.0.1
 neighbor 172.16.0.2 remote-as ${var.bgp_asn_remote}
 neighbor 172.16.0.2 timers 10 30  # Add: BGP timers for better reliability
 !
 address-family ipv4 unicast
-  network ${var.remote_subnet}
   neighbor 172.16.0.2 activate
   neighbor 172.16.0.2 soft-reconfiguration inbound  # Add: Soft reconfiguration for easier troubleshooting
+  redistribute static
+  redistribute connect
+  neighbor 172.16.0.2 route-map ALLOW_RFC1918 in
+    neighbor 172.16.0.2 route-map ALLOW_RFC1918 out
 exit-address-family
+exit
+!
+ip prefix-list RFC1918_RANGES seq 5 permit 10.0.0.0/8 ge 8 le 32
+ip prefix-list RFC1918_RANGES seq 10 permit 172.16.0.0/12 ge 12 le 32
+ip prefix-list RFC1918_RANGES seq 15 permit 192.168.0.0/16 ge 16 le 32
+!
+route-map ALLOW_RFC1918 permit 10
+ match ip address prefix-list RFC1918_RANGES
+exit
 !
 line vty
 !
+end
 EOT
 
 TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
