@@ -43,7 +43,7 @@ We have build a dedicated Terraform module, to build an IPsec EC2 Instance, whic
 ## Module IpsecInstance
 
 More details here : 
-[Module IpsecInstance](modules/IpsecInstance/README.md)
+[Module IpsecInstance](modules/ipsec-instance/)
 
 
 ### Key Benefits
