@@ -33,7 +33,13 @@
 > Project in progress
 
 ## Overview
-This Terraform project enables direct VPN termination at the edge of the 5G network using AWS Wavelength Zones. By eliminating the need for traffic to traverse back to the parent AWS Region, this solution significantly reduces latency for edge computing applications.
+This Terraform project enables direct VPN termination at the edge using AWS Wavelength Zones. By eliminating the need for traffic to traverse back to the parent AWS Region, this solution significantly reduces latency for edge computing applications.
+
+We have build a dedicated Terraform module, to build an IPsec EC2 Instance, which can be deployed in a Region or in a Wavelength Zone. (No test done yet in a local zone and Outpost)
+
+
+![IpsecInstance](img/IpsecInstance.png)
+
 
 ### Key Benefits
 - Direct VPN termination in Wavelength Zone
@@ -57,6 +63,14 @@ This Terraform project enables direct VPN termination at the edge of the 5G netw
 - Access to AWS Wavelength Zones
 
 ## Architecture Components
+
+In this code, we are going to deploy 2 Ipsec instances : 
+- The first on in an AWS region, to simulate an IPSec Router on premises
+- The second one, in a Subnet in a Wavelength Zone.
+  - In the example, we are attaching a second VPC to the instance, to provide connectivity to several subnets.
+
+  Here you are the details of what is designed.
+
 - VPC with Wavelength Zone extension
 - Carrier Gateway for mobile network connectivity
 - EC2-based VPN endpoint in Wavelength Zone
