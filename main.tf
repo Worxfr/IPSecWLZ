@@ -160,7 +160,7 @@ module "ipsec-wlz"  {
   vpc_id              = aws_vpc.wavelength_vpc.id
   subnet_id           = aws_subnet.wavelength_subnet.id
   key_pair_name       = var.key_pair_name
-  remote_public_ip   = aws_eip.region_ip.id
+  remote_public_ip   = aws_eip.region_ip.public_ip
   elastic_ip         = aws_eip.wavelength_ip.id
   remote_private_ip  = var.private_ip_2
   local_private_ip   = var.private_ip_1
@@ -195,7 +195,7 @@ module "ipsec-region"  {
   vpc_id              = aws_vpc.region_vpc.id
   subnet_id           = aws_subnet.region_subnet.id
   key_pair_name       = var.key_pair_name
-  remote_public_ip    = aws_eip.wavelength_ip.id 
+  remote_public_ip    = aws_eip.wavelength_ip.carrier_ip 
   elastic_ip         = aws_eip.region_ip.id
   remote_private_ip  = var.private_ip_1
   local_private_ip   = var.private_ip_2

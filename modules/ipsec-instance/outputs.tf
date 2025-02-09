@@ -10,7 +10,7 @@ output "instance_private_ip" {
 
 output "instance_public_ip" {
   description = "Public IP (EIP) of the EC2 instance"
-  value       = local.remote_ip
+  value       = var.remote_public_ip
 }
 
 output "security_group_id" {

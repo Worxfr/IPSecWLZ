@@ -32,14 +32,14 @@ resource "aws_security_group" "ipsec_bgp_sg" {
     from_port   = 500
     to_port     = 500
     protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["${var.remote_public_ip}/32"]
   }
 
   ingress {
     from_port   = 4500
     to_port     = 4500
     protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["${var.remote_public_ip}/32"]
   }
 
   egress {
@@ -76,15 +76,6 @@ resource "aws_iam_instance_profile" "session_manager_profile" {
   name = "SessionManagerProfile-${random_string.rand.result}"
   role = aws_iam_role.session_manager_role.name
 }
-
-data "aws_eip" "remote_public_ip" {
-  id = var.remote_public_ip
-}
-
-# Choose between public_ip and carrier_ip for the remote_ip based on is_wlz variable
-locals {
-  remote_ip = var.is_wlz ?  data.aws_eip.remote_public_ip.public_ip : data.aws_eip.remote_public_ip.carrier_ip
-}  
 
 
 # EC2 instance for IPSec tunnel and BGP
@@ -139,7 +130,7 @@ conn ikev2-vti
   left=PRIVATELOCAL
   leftid=@PUBLICLOCAL
   leftsubnet=0.0.0.0/0
-  right=${local.remote_ip}
+  right=${var.remote_public_ip}
   rightid=%any
   rightsubnet=0.0.0.0/0
   authby=secret
@@ -160,11 +151,11 @@ touch /tmp/ETAPE3
 
 cat <<EOT > /etc/strongswan.d/ipsec-vti.sh
 #!/bin/bash
-sudo ip link add vti100 type vti local PRIVATELOCAL remote ${local.remote_ip} key 42
+sudo ip link add vti100 type vti local PRIVATELOCAL remote ${var.remote_public_ip} key 42
 sudo ip addr add ${var.local_private_ip}/30 remote ${var.remote_private_ip}/30 dev vti100
 sudo ip link set vti100 up mtu 1419
 sudo iptables -t mangle -A FORWARD -o vti100 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${local.remote_ip} -j MARK --set-xmark 42
+sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${var.remote_public_ip} -j MARK --set-xmark 42
 sudo ip route flush table 220
 EOT
 

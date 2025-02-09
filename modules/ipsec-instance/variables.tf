@@ -56,6 +56,12 @@ variable "is_wlz" {
   default     = false
 }
 
+variable "is_remote_in_region" {
+  description = "Boolean flag to indicate if the remote device is in the AWS Region"
+  type        = bool
+  default     = false
+}
+
 variable "secondary_vpcs" {
   description = "List of secondary VPCs configurations for cross-VPC ENIs"
   type = list(object({
