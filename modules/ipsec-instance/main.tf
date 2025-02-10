@@ -158,7 +158,7 @@ connections {
         
         local {
             auth = psk
-            id = @PUBLIC_LOCAL
+            id = ${var.local_private_ip}
         }
         remote {
             auth = psk
@@ -171,8 +171,8 @@ connections {
                 remote_ts = 0.0.0.0/0
                 esp_proposals = aes256-sha256-modp2048
                 updown = /etc/swanctl/xfrm-updown.sh
-                if_id_in = ${var.mark_in}
-                if_id_out = ${var.mark_out}
+                if_id_in = ${var.mark}
+                if_id_out = ${var.mark}
                 mode = tunnel
                 start_action = start
             }
@@ -185,6 +185,8 @@ connections {
 
 secrets {
     ike-psk {
+        id-1 = ${var.local_private_ip}
+        id-2 = ${var.remote_private_ip}
         secret = "${var.ipsec_psk}"
     }
 }
@@ -196,14 +198,16 @@ cat <<EOT > /etc/swanctl/xfrm-updown.sh
 
 case "\$PLUTO_VERB" in
     up-client)
-        ip link add xfrm${var.mark_in} type xfrm if_id ${var.mark_in}
-        ip addr add ${var.local_private_ip}/30 dev xfrm${var.mark_in}
-        ip link set xfrm${var.mark_in} up mtu 1420
-        iptables -t mangle -A FORWARD -o xfrm${var.mark_in} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        ip link add xfrm${var.mark} type xfrm if_id ${var.mark} dev ens5
+        ip addr add ${var.local_private_ip}/30 dev xfrm${var.mark}
+        ip link set xfrm${var.mark} up mtu 1420
+        iptables -t mangle -A FORWARD -o xfrm${var.mark} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        #ip route add ${var.remote_private_ip}/32 dev xfrm${var.mark}
         ;;
     down-client)
-        ip link del xfrm${var.mark_in}
-        iptables -t mangle -D FORWARD -o xfrm${var.mark_in} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        ip link del xfrm${var.mark}
+        iptables -t mangle -D FORWARD -o xfrm${var.mark} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        ip route delete ${var.remote_private_ip}/32 dev xfrm${var.mark}
         ;;
 esac
 EOT
@@ -339,6 +343,7 @@ resource "aws_network_interface" "secondary_eni" {
   subnet_id       = each.value.subnet_id
   security_groups = [aws_security_group.secondary_eni_sg[each.key].id]
   description     = each.value.description
+  source_dest_check = false
 
   tags = {
     Name = "CrossVPC-Secondary-ENI-${each.key}"

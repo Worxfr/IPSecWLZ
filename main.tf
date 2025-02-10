@@ -393,8 +393,7 @@ module "ipsec-wlz"  {
   bgp_asn_local      = var.bgp_asn_local
   bgp_asn_remote     = var.bgp_asn_remote
   is_wlz             = true
-  mark_in               = 1
-  mark_out              = 2
+  mark               = 1
   bgp_password       = "klghfdghlksfdghljk"
 
   # Multiple secondary VPCs configuration
@@ -430,8 +429,7 @@ module "ipsec-region"  {
   ipsec_psk          = var.ipsec_psk
   bgp_asn_local      = var.bgp_asn_remote
   bgp_asn_remote     = var.bgp_asn_local
-  mark_in               = 2
-  mark_out              = 1
+  mark               = 1
   bgp_password       = "klghfdghlksfdghljk"
 
   depends_on = [ aws_eip.region_ip, aws_eip.wavelength_ip ]
