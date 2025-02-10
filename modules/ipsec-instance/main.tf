@@ -1,5 +1,5 @@
 # Data source to get latest Ubuntu 22.04 AMI
-data "aws_ami" "amazon_linux_2" {
+data "aws_ami" "ubuntu22" {
   most_recent = true
   owners      = ["amazon"]
 
@@ -42,6 +42,27 @@ resource "aws_security_group" "ipsec_bgp_sg" {
     cidr_blocks = ["${var.remote_public_ip}/32"]
   }
 
+ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["172.16.0.0/12"]
+  }
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["192.168.0.0/16"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -80,7 +101,7 @@ resource "aws_iam_instance_profile" "session_manager_profile" {
 
 # EC2 instance for IPSec tunnel and BGP
 resource "aws_instance" "ipsec_bgp_instance" {
-  ami           = data.aws_ami.amazon_linux_2.id
+  ami           = data.aws_ami.ubuntu22.id
   instance_type = "t3.medium"
   subnet_id     = var.subnet_id
   vpc_security_group_ids = [aws_security_group.ipsec_bgp_sg.id]
@@ -100,129 +121,172 @@ resource "aws_instance" "ipsec_bgp_instance" {
 #!/bin/bash
 set -e
 
-# Update and install required packages
-sleep 10
-while pgrep -f "apt|dpkg" > /dev/null; do
-    echo "Waiting for other package manager processes to finish..."
-    sleep 10
-done
-apt-get update -y
-while pgrep -f "apt|dpkg" > /dev/null; do
-    echo "Waiting for other package manager processes to finish..."
-    sleep 10
-done
-apt-get install -y strongswan libcharon-extra-plugins frr iproute2
-touch /tmp/ETAPE1
+# Logging function
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/vpn-setup.log
+}
 
-# StrongSwan Configuration
-cat <<EOT > /etc/ipsec.conf
-config setup
-  charondebug="ike 1, knl 1, cfg 0"
-conn ikev2-vti
-  auto=start
-  compress=no
-  type=tunnel
-  keyexchange=ikev2
-  fragmentation=yes
-  forceencaps=yes
-  ike=aes256-sha256-modp2048
-  esp=aes256-sha256-modp2048
-  left=PRIVATELOCAL
-  leftid=@PUBLICLOCAL
-  leftsubnet=0.0.0.0/0
-  right=${var.remote_public_ip}
-  rightid=%any
-  rightsubnet=0.0.0.0/0
-  authby=secret
-  mark=42
-  vti-interface=vti100
-  vti-routing=no
-  leftvti=${var.local_private_ip}/30
-  rightvti=${var.remote_private_ip}/30
-  leftupdown=/etc/strongswan.d/ipsec-vti.sh
+log "Starting VPN configuration"
+
+# Update and install packages
+apt_update_install() {
+    log "Updating system and installing packages"
+    apt-get update -y && apt-get install -y strongswan-swanctl charon-systemd libcharon-extra-plugins frr iproute2
+    if [ $? -ne 0 ]; then
+        log "Error during package installation"
+        exit 1
+    fi
+}
+
+# Wait for apt/dpkg processes to finish
+wait_for_apt() {
+    while pgrep -f "apt|dpkg" > /dev/null; do
+        log "Waiting for apt/dpkg processes to finish..."
+        sleep 10
+    done
+}
+
+wait_for_apt
+apt_update_install
+
+log "Configuring strongSwan"
+cat <<EOT > /etc/swanctl/swanctl.conf
+connections {
+    ikev2-xfrm {
+        local_addrs = PRIVATE_LOCAL
+        remote_addrs = ${var.remote_public_ip}
+        
+        local {
+            auth = psk
+            id = @PUBLIC_LOCAL
+        }
+        remote {
+            auth = psk
+            id = ${var.remote_private_ip}
+        }
+        
+        children {
+            net {
+                local_ts = 0.0.0.0/0
+                remote_ts = 0.0.0.0/0
+                esp_proposals = aes256-sha256-modp2048
+                updown = /etc/swanctl/xfrm-updown.sh
+                if_id_in = ${var.mark_in}
+                if_id_out = ${var.mark_out}
+                mode = tunnel
+                start_action = start
+            }
+        }
+        
+        version = 2
+        proposals = aes256-sha256-modp2048
+    }
+}
+
+secrets {
+    ike-psk {
+        secret = "${var.ipsec_psk}"
+    }
+}
 EOT
 
-touch /tmp/ETAPE2
-
-echo ": PSK \"${var.ipsec_psk}\"" > /etc/ipsec.secrets
-chmod 600 /etc/ipsec.secrets
-
-touch /tmp/ETAPE3
-
-cat <<EOT > /etc/strongswan.d/ipsec-vti.sh
+log "Configuring XFRM updown script"
+cat <<EOT > /etc/swanctl/xfrm-updown.sh
 #!/bin/bash
-sudo ip link add vti100 type vti local PRIVATELOCAL remote ${var.remote_public_ip} key 42
-sudo ip addr add ${var.local_private_ip}/30 remote ${var.remote_private_ip}/30 dev vti100
-sudo ip link set vti100 up mtu 1419
-sudo iptables -t mangle -A FORWARD -o vti100 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-sudo iptables -t mangle -A INPUT -p esp -s PRIVATELOCAL -d ${var.remote_public_ip} -j MARK --set-xmark 42
-sudo ip route flush table 220
+
+case "\$PLUTO_VERB" in
+    up-client)
+        ip link add xfrm${var.mark_in} type xfrm if_id ${var.mark_in}
+        ip addr add ${var.local_private_ip}/30 dev xfrm${var.mark_in}
+        ip link set xfrm${var.mark_in} up mtu 1420
+        iptables -t mangle -A FORWARD -o xfrm${var.mark_in} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        ;;
+    down-client)
+        ip link del xfrm${var.mark_in}
+        iptables -t mangle -D FORWARD -o xfrm${var.mark_in} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        ;;
+esac
 EOT
 
-echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-ipsecconfig.conf
-echo "net.ipv4.conf.vti100.disable_policy=1" >> /etc/sysctl.d/99-ipsecconfig.conf
-echo "net.ipv4.conf.vti100.rp_filter=2" >> /etc/sysctl.d/99-ipsecconfig.conf
-echo "net.ipv4.conf.ens5.disable_xfrm=1" >> /etc/sysctl.d/99-ipsecconfig.conf
-echo "net.ipv4.conf.ens5.disable_policy=1" >> /etc/sysctl.d/99-ipsecconfig.conf
-sysctl --system
+chmod +x /etc/swanctl/xfrm-updown.sh
 
+log "Configuring network parameters"
+cat <<EOT > /etc/sysctl.d/99-ipsecconfig.conf
+net.ipv4.ip_forward=1
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.all.rp_filter=0
+net.ipv4.conf.default.rp_filter=0
+net.ipv4.conf.all.log_martians=1
+EOT
+
+sysctl -p /etc/sysctl.d/99-ipsecconfig.conf
+
+log "Configuring FRRouting"
 sed -i 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
 
-cat << EOT > /etc/frr/frr.conf
+cat <<EOT > /etc/frr/frr.conf
 frr version 8.1
 frr defaults traditional
-hostname vpn-router
+hostname vpn-router-xfrm
 log syslog informational
 service integrated-vtysh-config
-!
+
 router bgp ${var.bgp_asn_local}
-bgp router-id ${var.local_private_ip}
-neighbor ${var.remote_private_ip} remote-as ${var.bgp_asn_remote}
-neighbor ${var.remote_private_ip} timers 10 30
-!
-address-family ipv4 unicast
+ bgp router-id ${var.local_private_ip}
+ neighbor ${var.remote_private_ip} remote-as ${var.bgp_asn_remote}
+ neighbor ${var.remote_private_ip} timers 10 30
+ neighbor ${var.remote_private_ip} password ${var.bgp_password}
+
+ address-family ipv4 unicast
   neighbor ${var.remote_private_ip} activate
   neighbor ${var.remote_private_ip} soft-reconfiguration inbound
   redistribute static
-  redistribute connect
-  neighbor ${var.remote_private_ip} route-map ALLOW_RFC1918 in
-    neighbor ${var.remote_private_ip} route-map ALLOW_RFC1918 out
-exit-address-family
-exit
-!
+  redistribute connected
+ exit-address-family
+
 ip prefix-list RFC1918_RANGES seq 5 permit 10.0.0.0/8 ge 8 le 32
 ip prefix-list RFC1918_RANGES seq 10 permit 172.16.0.0/12 ge 12 le 32
 ip prefix-list RFC1918_RANGES seq 15 permit 192.168.0.0/16 ge 16 le 32
-!
+
 route-map ALLOW_RFC1918 permit 10
  match ip address prefix-list RFC1918_RANGES
-exit
-!
+
 line vty
 !
 end
 EOT
 
-TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
-PRIVATELOCAL=`curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4`
-PUBLICLOCAL=`curl http://v4.ipadd.re`
-sed -i "s/PUBLICLOCAL/$PUBLICLOCAL/g" /etc/ipsec.conf
-sed -i "s/PRIVATELOCAL/$PRIVATELOCAL/g" /etc/strongswan.d/ipsec-vti.sh
-sed -i "s/PRIVATELOCAL/$PRIVATELOCAL/g" /etc/ipsec.conf
+log "Retrieving EC2 metadata"
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+PRIVATE_LOCAL=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+PUBLIC_LOCAL=$(curl -s http://checkip.amazonaws.com)
 
-chown frr:frr /etc/frr/frr.conf
-chmod 640 /etc/frr/frr.conf
-chmod 700 /etc/strongswan.d/ipsec-vti.sh
+sed -i "s/PUBLIC_LOCAL/$PUBLIC_LOCAL/g" /etc/swanctl/swanctl.conf
+sed -i "s/PRIVATE_LOCAL/$PRIVATE_LOCAL/g" /etc/swanctl/swanctl.conf
 
-systemctl daemon-reload
-systemctl enable --now systemd-networkd
-systemctl enable strongswan-starter
-systemctl restart strongswan-starter
-systemctl enable frr
-systemctl restart frr
+log "Setting permissions and starting services"
+chown frr:frr /etc/frr/frr.conf 
+chmod 640 /etc/frr/frr.conf 
 
+# AppArmor fix
+log "Applying AppArmor fix for swanctl"
+cat <<EOT >> /etc/apparmor.d/local/usr.sbin.swanctl
+/dev/pts/* rw,
+/dev/pts/[0-9]* rw,
+EOT
+
+apparmor_parser -r /etc/apparmor.d/usr.sbin.swanctl
+
+systemctl enable --now strongswan.service
+systemctl restart strongswan.service
+systemctl enable --now frr.service
+systemctl restart frr.service
+
+log "VPN configuration completed"
 
 EOF
+
 }
 
 # Associate Elastic IP with EC2 instance
