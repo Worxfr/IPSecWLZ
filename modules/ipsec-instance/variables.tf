@@ -78,5 +78,15 @@ variable "secondary_vpcs" {
   default = []
 }
 
+variable "mark" {
+  description = "Integer value for mark"
+  type        = number
+} 
 
+
+variable "bgp_password" {
+  description = "Password for BGP authentication"
+  type        = string
+  sensitive   = true
+}
 

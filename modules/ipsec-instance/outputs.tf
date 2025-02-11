@@ -23,6 +23,11 @@ output "is_wlz" {
   value       = var.is_wlz
 }
 
+output "main_eni" {
+  description = "Map of secondary ENI details"
+  value = aws_instance.ipsec_bgp_instance.primary_network_interface_id
+}
+
 output "secondary_enis" {
   description = "Map of secondary ENI details"
   value = {
